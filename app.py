@@ -422,6 +422,6 @@ else:
     else:
          st.warning("Colunas esperadas (ORDSEP, ORDEM_SKY) não encontradas nos dados retornados")
 
-# Refresh a cada 5 segundos
-time.sleep(5)
-st.rerun()
+# Refresh automático da página suave (sem travar o servidor do Streamlit)
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=5000, key="painel_refresh")
