@@ -46,7 +46,7 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         font-size: 3.0rem !important;
         font-weight: 800;
-        color: #1f3a93;
+        color: #004a99; /* Azul Elsys */
     }
     [data-testid="stMetricLabel"] {
         font-size: 1.4rem !important;
@@ -57,13 +57,13 @@ st.markdown("""
     /* Títulos de colunas e seções */
     h1, h2, h3 {
         text-align: center;
-        color: #2c3e50;
+        color: #003366; /* Azul Elsys Escuro */
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     
     /* Container da próxima remessa */
     .next-order-container {
-        background: linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%);
+        background: linear-gradient(135deg, #005ce6 0%, #003380 100%); /* Premium Elsys Blue */
         color: white;
         padding: 20px;
         border-radius: 12px;
@@ -169,13 +169,15 @@ def carregar_dados():
         st.error(f"Erro ao conectar na API de dados: {e}")
         return pd.DataFrame()
 
-# Inicializa sessão para lógica de finalizados
-if "historico_ordens" not in st.session_state:
-    st.session_state.historico_ordens = set()
-if "finalizados_hoje" not in st.session_state:
-    st.session_state.finalizados_hoje = []
-if "tempos_separacao" not in st.session_state:
-    st.session_state.tempos_separacao = {}
+# Estado global para persistir por F5 e multi-session (cache a nivel de servidor)
+@st.cache_resource
+def get_global_state():
+    return {
+        "historico_ordens": set(),
+        "finalizados_hoje": [],
+        "tempos_separacao": {}
+    }
+gs = get_global_state()
 
 # Título principal
 st.title("📦 PAINEL DE SEPARAÇÃO E EXPEDIÇÃO 🚚")
@@ -196,14 +198,14 @@ else:
         
         # --- Lógica de Baixas / Finalizações ---
         # 1. Identificar as remessas que "sumiram" do painel
-        if st.session_state.historico_ordens:
-            sumiram = st.session_state.historico_ordens - conjunto_atual
+        if gs["historico_ordens"]:
+            sumiram = gs["historico_ordens"] - conjunto_atual
             for ord_sumida in sumiram:
                 hora_finalizacao = datetime.now().strftime("%H:%M:%S")
                 # Previne erro com dicionário da estrutura antiga
-                ja_tem = any(item.get('Ordem SEP', item.get('Ordem', '')) == ord_sumida for item in st.session_state.finalizados_hoje)
+                ja_tem = any(item.get('Ordem SEP', item.get('Ordem', '')) == ord_sumida for item in gs["finalizados_hoje"])
                 if not ja_tem:
-                    st.session_state.finalizados_hoje.insert(0, {
+                    gs["finalizados_hoje"].insert(0, {
                         "Ordem SEP": ord_sumida, 
                         "Remessa": "N/D", 
                         "Status Final": "DESPACHADA (Sistêmica)",
@@ -211,7 +213,7 @@ else:
                     })
                     
         # Atualiza histórico com as ordens na base atual
-        st.session_state.historico_ordens = conjunto_atual
+        gs["historico_ordens"] = conjunto_atual
         
         # --- Limpeza e Padronização ---
         if "OPERADOR" not in df_atual.columns:
@@ -233,13 +235,13 @@ else:
         
         # Atualiza métricas de tempo de separação
         ordens_sep_ativas = set(df_separando["ORDEM SEP"])
-        for o_sep in list(st.session_state.tempos_separacao.keys()):
+        for o_sep in list(gs["tempos_separacao"].keys()):
             if o_sep not in ordens_sep_ativas:
-                del st.session_state.tempos_separacao[o_sep]
+                del gs["tempos_separacao"][o_sep]
                 
         for o_sep in ordens_sep_ativas:
-            if o_sep not in st.session_state.tempos_separacao:
-                st.session_state.tempos_separacao[o_sep] = time.time()
+            if o_sep not in gs["tempos_separacao"]:
+                gs["tempos_separacao"][o_sep] = time.time()
         
         # 3. Aguardando Despacho Op. e Retorno SKY
         status_aguardando = ["AGUARDANDO DESPACHO OP.", "AGUARDANDO RETORNO SAP SKY"]
@@ -255,7 +257,7 @@ else:
         
         # --- DataFrame Consolidado de Finalizadas ---
         df_finalizados_sumiram_raw = []
-        for item in st.session_state.finalizados_hoje:
+        for item in gs["finalizados_hoje"]:
             ord_sep = item.get("Ordem SEP", item.get("Ordem", "N/A"))
             hora = item.get("Hora Baixa", item.get("Hora", "---"))
             df_finalizados_sumiram_raw.append({
@@ -388,7 +390,7 @@ else:
                         if len(operador_v) > 15:
                             operador_v = operador_v[:13] + ".."
                             
-                    start_t = st.session_state.tempos_separacao.get(ordem_v, time.time())
+                    start_t = gs["tempos_separacao"].get(ordem_v, time.time())
                     elapsed = int(time.time() - start_t)
                     m = elapsed // 60
                     s = elapsed % 60
