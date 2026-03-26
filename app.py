@@ -2,18 +2,42 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import json
+import os
 from datetime import datetime
 
-# Tentativa de carregar as credenciais seguras da nuvem ou do arquivo local
-try:
-    USERNAME = st.secrets["api"]["username"]
-    PASSWORD = st.secrets["api"]["password"]
-except:
-    # Fallback apenas para uso local (Não recomendado caso o repositório seja público na web)
-    USERNAME = "002290"
-    PASSWORD = "#Elsys2025@"
+# ==========================================
+# CONFIGURAÇÕES DE ACESSO (Isoladas do Código)
+# ==========================================
+# O painel agora lê as configurações dinamicamente do arquivo "config.json"
+# para que nenhuma URL de sistema ou senha fique aberta no código-fonte.
 
-BASE_API_URL = "https://elsysequipamentos166583.protheus.cloudtotvs.com.br:4051/rest"
+# Configuração da Página para TV - DEVE SER O PRIMEIRO COMANDO
+st.set_page_config(page_title="Painel de Separação - Expedição", layout="wide")
+
+CONFIG_FILE = "config.json"
+
+
+@st.cache_resource
+def load_config():
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        st.error(f"❌ Erro crítico: Arquivo '{CONFIG_FILE}' não encontrado ou inválido. Detalhe: {e}")
+        return None
+
+config = load_config()
+
+if config:
+    BASE_API_URL = config.get("BASE_API_URL", "")
+    USERNAME = config.get("USERNAME", "")
+    PASSWORD = config.get("PASSWORD", "")
+else:
+    BASE_API_URL = ""
+    USERNAME = ""
+    PASSWORD = ""
+
 LOGIN_URL = f"{BASE_API_URL}/api/oauth2/v1/token"
 DATA_URL = f"{BASE_API_URL}/ELS_WEBAPP/pickingsky?pageSize=4000&page=0"
 
@@ -28,8 +52,6 @@ STATUS_MAP = {
     "AG. NOTA ELSYS": "DESPACHADO"
 }
 
-# Configuração da Página para TV
-st.set_page_config(page_title="Painel de Separação - Expedição", layout="wide")
 
 # Estilos CSS Customizados para TV com novo design
 st.markdown("""
@@ -122,7 +144,14 @@ def obter_token():
         token_data = response_auth.json()
         return token_data.get("access_token")
     except Exception as e:
-        st.error(f"Erro ao autenticar: {e}")
+        if hasattr(e, 'response') and e.response is not None and e.response.status_code == 401:
+            st.error("❌ ERRO DE SENHA (401): O sistema TOTVS recusou o acesso.", icon="🚨")
+            st.info("A senha ou usuário podem estar incorretos/expirados. Para consertar:\n"
+                    "1. Abra o arquivo `config.json` com o Bloco de Notas.\n"
+                    "2. Troque a `PASSWORD` com a nova senha.\n"
+                    "3. Salve o arquivo e aperte F5 aqui no painel para reiniciar.")
+        else:
+            st.error(f"Erro ao autenticar: {e}")
         return None
 
 def carregar_dados():
@@ -181,6 +210,17 @@ gs = get_global_state()
 
 # Título principal
 st.title("📦 PAINEL DE SEPARAÇÃO E EXPEDIÇÃO 🚚")
+
+# Alerta sobre o CMD pausado na lateral
+st.sidebar.markdown("""
+<div style='background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 8px; border-left: 6px solid #ffeeba; font-size: 0.95em;'>
+<b>⚠️ Dica: "Erro de Conexão"</b><br><br>
+Se o painel ficar com a tela cinza dizendo que perdeu a conexão, <b>NÃO FECHE</b> a janela.<br><br>
+Vá até a <b>Tela Preta (CMD)</b> que está aberta minimizada e <b>aperte a tecla ENTER ou ESC algumas vezes</b>.<br><br>
+O Windows costuma "pausar" o painel se você clicar acidentalmente dentro da tela preta!
+</div>
+""", unsafe_allow_html=True)
+
 
 # Busca os dados atuais
 df_atual = carregar_dados()
